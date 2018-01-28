@@ -1,54 +1,77 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync"
 	"time"
 )
 
 func main() {
+	ctx := context.Background()
 	circle := make(chan Car, 8)
 	exit := make(chan Car, 8)
 
-	//go FirstInputRoad(circle)
+	go FirstInputRoad(circle)
 	go SecondInputRoad(circle)
-	//go ThirdInputRoad(circle)
-	//go FourthOutputRoad(circle)
-	//go FirstOutputRoad(exit)
+	go ThirdInputRoad(circle)
+	go FourthOutputRoad(circle)
+	go FirstOutputRoad(exit)
 	go SecondOutputRoad(exit)
-	//go ThirdOutputRoad(exit)
-	//go FourthOutputRoad(exit)
+	go ThirdOutputRoad(exit)
+	go FourthOutputRoad(exit)
 
 	go trafficChecker(circle, exit)
 
-	ex := make(chan string)
-	for {
-		select {
-		case <-ex:
-			{
-				os.Exit(0)
-			}
-		}
+	//ex := make(chan struct{})
+	//for {
+	//	select {
+	//	case <-ex:
+	//		os.Exit(0)
+	//	}
+	//}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
+
+	// Block until a signal is received.
+	select {
+	case s := <-c:
+		fmt.Println("Got signal:", s)
+		os.Exit(0)
+	case <-ctx.Done():
+		fmt.Println("Got ctx.Done:", ctx.Err())
+		os.Exit(0)
 	}
+
 }
 
 // Counter ...
 type Counter struct {
-	sync.Mutex
+	sync.RWMutex
 	n int
 }
 
-var counter = Counter{n: 0}
+var counter = Counter{}
 
 // Increment a counter
-func (c *Counter) Increment() {
+func (c *Counter) Increment() int {
 	c.Lock()
+	defer c.Unlock()
 	c.n++
-	c.Unlock()
+	return c.n
 }
+func (c *Counter) GetN() int {
+	c.RLock()
+	defer c.RUnlock()
+	return c.n
+}
+
+var counter2 int32
 
 // Car ...
 type Car struct {
@@ -58,24 +81,29 @@ type Car struct {
 
 // NewCar - creates a car
 func NewCar() Car {
-	car := Car{}
-	counter.Increment()
-	car.Name = "car-" + strconv.Itoa(counter.n)
+	car := Car{Name: "car-" + strconv.Itoa(counter.Increment())}
+	//car.Name = "car-" + strconv.Itoa(int(atomic.AddInt32(&counter2, 1)))
 	return car
+}
+
+func executeEvery(fn func(), every time.Duration) {
+	for {
+		fn()
+		time.Sleep(every * time.Second)
+	}
 }
 
 // FirstInputRoad generates random number (0 to 5) of cars per second
 func FirstInputRoad(cirlce chan Car) {
 	n := getRandomInt(5)
-	for {
+	executeEvery(func() {
 		for i := 0; i < n; i++ {
 			car := NewCar()
 			car.entered = time.Now()
 			fmt.Println(car.Name + " comes from 1st Input Road")
 			cirlce <- car
 		}
-		time.Sleep(1 * time.Second)
-	}
+	}, 1)
 }
 
 // SecondInputRoad generates 1 car each second
@@ -155,21 +183,26 @@ func FourthOutputRoad(exit chan Car) {
 }
 
 func getRandomInt(n int) int {
-	source := rand.NewSource(time.Now().UnixNano())
-	r := rand.New(source)
-	return r.Intn(n)
+	randSeed := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return randSeed.Intn(n)
 }
 
+// TODO: Chans!!!!!
 func trafficChecker(circle chan Car, toExit chan Car) {
-	for {
-		for car := range circle {
-			delta := time.Now().Sub(car.entered)
-			if delta > 3*time.Second {
-				fmt.Printf("car: %s, time: %s\n", car.Name, delta)
-				toExit <- car
-			} else {
-				circle <- car
-			}
+	for car := range circle {
+		delta := time.Now().Sub(car.entered)
+		// TODO: Time depends
+		if delta < 3*time.Second {
+			circle <- car
+			time.Sleep(time.Millisecond * 100)
+			continue
 		}
+		fmt.Fprintf(os.Stdout, "car: %s, time: %s\n. %d Cars left", car.Name, delta, len(circle))
+		toExit <- car
 	}
 }
+
+//input1-        - Exit1 -output1 4s
+//input2- CIRCLE - Exit2 -output2 1s
+//input3-        - Exit3 -output3 2s
+//input4-        - Exit4 -output4 3s
