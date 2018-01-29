@@ -27,14 +27,6 @@ func main() {
 
 	go trafficChecker(circle, exit)
 
-	//ex := make(chan struct{})
-	//for {
-	//	select {
-	//	case <-ex:
-	//		os.Exit(0)
-	//	}
-	//}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
 
@@ -57,6 +49,7 @@ type Counter struct {
 }
 
 var counter = Counter{}
+var counter2 int32
 
 // Increment a counter
 func (c *Counter) Increment() int {
@@ -65,13 +58,6 @@ func (c *Counter) Increment() int {
 	c.n++
 	return c.n
 }
-func (c *Counter) GetN() int {
-	c.RLock()
-	defer c.RUnlock()
-	return c.n
-}
-
-var counter2 int32
 
 // Car ...
 type Car struct {
@@ -86,24 +72,15 @@ func NewCar() Car {
 	return car
 }
 
-func executeEvery(fn func(), every time.Duration) {
-	for {
-		fn()
-		time.Sleep(every * time.Second)
-	}
-}
-
 // FirstInputRoad generates random number (0 to 5) of cars per second
 func FirstInputRoad(cirlce chan Car) {
 	n := getRandomInt(5)
-	executeEvery(func() {
-		for i := 0; i < n; i++ {
-			car := NewCar()
-			car.entered = time.Now()
-			fmt.Println(car.Name + " comes from 1st Input Road")
-			cirlce <- car
-		}
-	}, 1)
+	for i := 0; i < n; i++ {
+		car := NewCar()
+		car.entered = time.Now()
+		fmt.Println(car.Name + " comes from 1st Input Road")
+		cirlce <- car
+	}
 }
 
 // SecondInputRoad generates 1 car each second
@@ -147,7 +124,8 @@ func FirstOutputRoad(exit chan Car) {
 	for {
 		for i := 0; i < n; i++ {
 			car := <-exit
-			fmt.Println(car.Name + " leaves into 1st Output Road")
+			fmt.Printf("%s is exiting into 1st Output Road, time: %s\n",
+				car.Name, time.Now().Sub(car.entered))
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -157,7 +135,8 @@ func FirstOutputRoad(exit chan Car) {
 func SecondOutputRoad(exit chan Car) {
 	for {
 		car := <-exit
-		fmt.Println(car.Name + " leaves into 2nd Output Road")
+		fmt.Printf("%s is exiting into 2nd Output Road, time: %s\n",
+			car.Name, time.Now().Sub(car.entered))
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -166,7 +145,8 @@ func SecondOutputRoad(exit chan Car) {
 func ThirdOutputRoad(exit chan Car) {
 	for {
 		car := <-exit
-		fmt.Println(car.Name + " leaves into 3rd Output Road")
+		fmt.Printf("%s is exiting into 3rd Output Road, time: %s\n",
+			car.Name, time.Now().Sub(car.entered))
 		time.Sleep(1 * time.Hour)
 	}
 }
@@ -176,7 +156,8 @@ func FourthOutputRoad(exit chan Car) {
 	for {
 		for i := 0; i < 10; i++ {
 			car := <-exit
-			fmt.Println(car.Name + " leaves into 1st Output Road")
+			fmt.Printf("%s is exiting into 4th Output Road, time: %s\n",
+				car.Name, time.Now().Sub(car.entered))
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -189,16 +170,10 @@ func getRandomInt(n int) int {
 
 func trafficChecker(circle chan Car, toExit chan Car) {
 	for car := range circle {
-		delta := time.Now().Sub(car.entered)
-		// TODO: Time depends
-		if delta < 3*time.Second {
-			// AAAAAAAAAAAAAA!!!!!!!!!!!!!!!!!!!!!!!!!
-			circle <- car
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		fmt.Fprintf(os.Stdout, "car: %s, time: %s\n. %d Cars left", car.Name, delta, len(circle))
-		toExit <- car
+		go func(car Car) {
+			time.Sleep(1 * time.Second)
+			toExit <- car
+		}(car)
 	}
 }
 
