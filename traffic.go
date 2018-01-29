@@ -19,7 +19,7 @@ func main() {
 	go FirstInputRoad(circle)
 	go SecondInputRoad(circle)
 	go ThirdInputRoad(circle)
-	go FourthOutputRoad(circle)
+	go FourthInputRoad(circle)
 	go FirstOutputRoad(exit)
 	go SecondOutputRoad(exit)
 	go ThirdOutputRoad(exit)
@@ -187,12 +187,12 @@ func getRandomInt(n int) int {
 	return randSeed.Intn(n)
 }
 
-// TODO: Chans!!!!!
 func trafficChecker(circle chan Car, toExit chan Car) {
 	for car := range circle {
 		delta := time.Now().Sub(car.entered)
 		// TODO: Time depends
 		if delta < 3*time.Second {
+			// AAAAAAAAAAAAAA!!!!!!!!!!!!!!!!!!!!!!!!!
 			circle <- car
 			time.Sleep(time.Millisecond * 100)
 			continue
